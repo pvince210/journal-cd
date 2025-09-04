@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="fr"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Saisie d’une demande de modification de CD</title>
+<style>
+:root{--bg:#f5f7fb;--card:#fff;--text:#0f172a;--muted:#64748b;--border:#e5e7eb;--primary:#0b5ed7;--radius:16px;--shadow:0 6px 24px rgba(15,23,42,.08)}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Arial}
+.container{max-width:920px;margin:0 auto;padding:20px}
+header{display:flex;flex-direction:column;align-items:center;gap:12px;padding:20px 0}
+.logo{height:64px}.tabs{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.tab{display:inline-block;padding:10px 14px;border:1px solid var(--border);background:#fff;border-radius:999px;text-decoration:none;color:var(--text)}
+.tab:hover{box-shadow:var(--shadow)} h1{font-size:22px;margin:18px 0}
+.card{background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:16px}
+label{display:block;margin:10px 0 6px;font-weight:600}
+input,textarea,button{width:100%;padding:12px;border-radius:12px;border:1px solid var(--border);font-size:16px;font-family:inherit}
+textarea{height:96px;resize:vertical}.btn{background:var(--primary);color:#fff;border:0;border-radius:12px;cursor:pointer}
+.btn:hover{filter:brightness(.95)} .small{font-size:12px;color:#64748b;margin-top:8px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.chips input{display:none}
+.chips label{padding:8px 14px;border:1px solid var(--border);border-radius:9999px;cursor:pointer;background:#fff}
+.chips input:checked+label{background:var(--primary);color:#fff;border-color:var(--primary)}
+</style></head><body>
+<div class="container">
+  <header>
+    <img src="/logopanol.png" alt="Panol" class="logo">
+    <nav class="tabs">
+      <a class="tab" href="/saisie">Saisie</a><a class="tab" href="/ouvertes">Ouvertes</a><a class="tab" href="/historique">Historique</a>
+    </nav>
+  </header>
+
+  <h1>Saisie d’une demande de modification de CD</h1>
+  <div class="card">
+    <div>Demandé par :</div>
+    <div class="chips">
+      <input type="radio" id="actor-nadia" name="actor" value="Nadia"><label for="actor-nadia">Nadia</label>
+      <input type="radio" id="actor-nicolas" name="actor" value="Nicolas"><label for="actor-nicolas">Nicolas</label>
+      <input type="radio" id="actor-veronique" name="actor" value="Véronique"><label for="actor-veronique">Véronique</label>
+    </div>
+
+    <label>N° commande</label><input id="order_no" placeholder="EX. CD123456" required>
+    <label>Motif</label><input id="reason" placeholder="Ex. Erreur adresse" required>
+    <label>Commentaire</label><textarea id="comment" placeholder="Détail"></textarea>
+
+    <button id="submit" class="btn">Enregistrer</button>
+    <div id="msg" class="small"></div>
+  </div>
+</div>
+
+<script>
+const API="/api";
+const $=id=>document.getElementById(id);
+const flash=(t,ok=false)=>{const m=$("msg");m.textContent=t;m.style.color=ok?"#0a7f2e":"#b30000";};
+const getActor=()=>{const r=document.querySelector('input[name="actor"]:checked');return r?r.value:"";};
+$("submit").onclick=async()=>{
+  const actor=getActor(), order_no=$("order_no").value.trim(), reason=$("reason").value.trim(), comment=$("comment").value.trim();
+  if(!actor||!order_no||!reason){flash("Sélectionner un prénom et remplir n° et motif");return;}
+  $("submit").disabled=true;
+  try{
+    const r=await fetch(API+"/requests",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({order_no,reason,comment,opened_by:actor})});
+    if(!r.ok) throw new Error(await r.text()); const data=await r.json();
+    flash(`Demande ${data.id} créée`,true);
+    $("order_no").value="";$("reason").value="";$("comment").value="";
+    document.querySelectorAll('input[name="actor"]').forEach(i=>i.checked=false);
+  }catch(e){flash(e.message||"Erreur");}finally{$("submit").disabled=false;}
+};
+</script></body></html>
