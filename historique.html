@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="fr"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Historique des clôturées</title>
+<style>
+:root{--bg:#f5f7fb;--card:#fff;--text:#0f172a;--muted:#64748b;--border:#e5e7eb;--primary:#0b5ed7;--radius:16px;--shadow:0 6px 24px rgba(15,23,42,.08)}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Arial}
+.container{max-width:1000px;margin:0 auto;padding:20px}
+header{display:flex;flex-direction:column;align-items:center;gap:12px;padding:20px 0}.logo{height:64px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.tab{display:inline-block;padding:10px 14px;border:1px solid var(--border);background:#fff;border-radius:999px;text-decoration:none;color:var(--text)}
+.tab:hover{box-shadow:var(--shadow)} h1{font-size:22px;margin:18px 0}
+.controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.card{background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:16px;margin:12px 0}
+.small{font-size:12px;color:var(--muted)} .btn{background:var(--primary);color:#fff;border:0;border-radius:12px;padding:10px 14px;cursor:pointer}
+.btn:hover{filter:brightness(.95)} input,textarea{padding:10px;border:1px solid var(--border);border-radius:12px}
+dialog{border:0;border-radius:16px;box-shadow:var(--shadow);padding:18px;max-width:520px;width:92%}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}.chips input{display:none}
+.chips label{padding:8px 14px;border:1px solid var(--border);border-radius:9999px;cursor:pointer;background:#fff}
+.chips input:checked+label{background:var(--primary);color:#fff;border-color:var(--primary)}
+.row{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+</style></head><body>
+<div class="container">
+  <header>
+    <img src="/logopanol.png" alt="Panol" class="logo">
+    <nav class="tabs">
+      <a class="tab" href="/saisie">Saisie</a><a class="tab" href="/ouvertes">Ouvertes</a><a class="tab" href="/historique">Historique</a>
+    </nav>
+  </header>
+
+  <h1>Historique des demandes clôturées</h1>
+  <div class="controls">
+    <label>Filtrer N° commande <input id="filter" placeholder="CMD..."></label>
+    <button id="refresh" class="btn">Rafraîchir</button>
+    <a class="btn" href="/api/export/csv">Exporter CSV</a>
+  </div>
+
+  <div id="list"></div>
+</div>
+
+<dialog id="dlg">
+  <h3>Réouvrir la demande <span id="dlg-id"></span> — Cmd <span id="dlg-cmd"></span></h3>
+  <div>Qui réouvre ?</div>
+  <div class="chips">
+    <input type="radio" id="dlg-actor-nadia" name="dlg-actor" value="Nadia"><label for="dlg-actor-nadia">Nadia</label>
+    <input type="radio" id="dlg-actor-nicolas" name="dlg-actor" value="Nicolas"><label for="dlg-actor-nicolas">Nicolas</label>
+    <input type="radio" id="dlg-actor-veronique" name="dlg-actor" value="Véronique"><label for="dlg-actor-veronique">Véronique</label>
+  </div>
+  <label>Motif</label><input id="dlg-reason" placeholder="Ex. Correction tarif">
+  <label>Commentaire</label><textarea id="dlg-comment" placeholder="Détails"></textarea>
+  <div class="row" style="justify-content:flex-end;margin-top:8px">
+    <button class="btn" id="dlg-cancel">Annuler</button>
+    <button class="btn" id="dlg-save">Enregistrer</button>
+  </div>
+</dialog>
+
+<script>
+const API="/api"; const $=id=>document.getElementById(id);
+let currentId=null,currentCmd=null;
+const getDlgActor=()=>{const r=document.querySelector('input[name="dlg-actor"]:checked');return r?r.value:"";};
+
+async function buildDetails(rq){
+  let html = `<div><b>Motif:</b> ${rq.reason}</div><div><b>Commentaire:</b> ${rq.comment??""}</div>`;
+  const evRes = await fetch(`${API}/requests/${rq.id}/events`);
+  if(evRes.ok){
+    const evs = await evRes.json(); let idx = 2;
+    for(const ev of evs){
+      const data = ev.data || {};
+      if(ev.event_type==="REOPENED"){
+        html += `<div><b>Motif ${idx}:</b> ${data.reason||""}</div>
+                 <div><b>Commentaire ${idx}:</b> ${data.comment||""}</div>
+                 <div class="small">Réouvert le ${new Date(ev.at).toLocaleString()} par ${ev.by}</div>`;
+        idx++;
+      }
+      if(ev.event_type==="CLOSED"){
+        html += `<div class="small">Clôturé le ${new Date(ev.at).toLocaleString()} par ${ev.by}</div>`;
+        if(data.comment) html += `<div class="small"><i>Note de clôture:</i> ${data.comment}</div>`;
+      }
+    }
+  }
+  return html;
+}
+
+async function load(){
+  const f=$("filter").value.trim();
+  const rAll=await fetch(API+"/requests?status=CLOSED"+(f?`&order_no=${encodeURIComponent(f)}`:""));
+  if(!rAll.ok){$("list").innerHTML="<div class='small'>Erreur de chargement</div>";return;}
+  const rows=await rAll.json(); const list=$("list"); list.innerHTML="";
+  if(rows.length===0){list.innerHTML="<div class='small'>Aucune demande clôturée.</div>";return;}
+  for(const rq of rows){
+    const d=document.createElement("div"); d.className="card";
+    d.innerHTML=`<div class="row">
+      <div><b>#${rq.id}</b> — Cmd: <b>${rq.order_no}</b></div>
+      <div class="small">Ouvert ${new Date(rq.opened_at).toLocaleString()} — Clôturé par ${rq.closed_by||"?"} le ${rq.closed_at?new Date(rq.closed_at).toLocaleString():"?"}</div>
+    </div>
+    <div id="details-${rq.id}">Chargement…</div>
+    <div class="row"><div></div><button class="btn reopen" data-id="${rq.id}" data-cmd="${rq.order_no}">Réouvrir</button></div>`;
+    list.appendChild(d);
+    buildDetails(rq).then(ht=>{ const el=document.getElementById(`details-${rq.id}`); if(el) el.innerHTML=ht; });
+  }
+  document.querySelectorAll(".reopen").forEach(b=>b.onclick=()=>{
+    currentId=b.dataset.id; currentCmd=b.dataset.cmd;
+    $("dlg-id").textContent=currentId; $("dlg-cmd").textContent=currentCmd;
+    $("dlg-reason").value=""; $("dlg-comment").value="";
+    document.querySelectorAll('input[name="dlg-actor"]').forEach(i=>i.checked=false);
+    $("dlg").showModal();
+  });
+}
+$("refresh").onclick=load; window.onload=load;
+
+$("dlg-cancel").onclick=()=>$("dlg").close();
+$("dlg-save").onclick=async()=>{
+  const actor=getDlgActor(); const reason=$("dlg-reason").value.trim(); const comment=$("dlg-comment").value.trim();
+  if(!actor||!reason){ alert("Sélectionner un prénom et saisir le motif"); return; }
+  $("dlg-save").disabled=true;
+  try{
+    const res=await fetch(`${API}/requests/${currentId}/reopen`,{
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({reopened_by:actor, reason, comment})
+    });
+    if(!res.ok) throw new Error(await res.text());
+    $("dlg").close(); window.location.href="/ouvertes";
+  }catch(e){ alert(e.message||"Erreur"); }
+  finally{ $("dlg-save").disabled=false; }
+};
+</script></body></html>
