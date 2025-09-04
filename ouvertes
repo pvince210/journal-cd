@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="fr"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Demandes ouvertes</title>
+<style>
+:root{--bg:#f5f7fb;--card:#fff;--text:#0f172a;--muted:#64748b;--border:#e5e7eb;--primary:#0b5ed7;--radius:16px;--shadow:0 6px 24px rgba(15,23,42,.08)}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Arial}
+.container{max-width:1000px;margin:0 auto;padding:20px}
+header{display:flex;flex-direction:column;align-items:center;gap:12px;padding:20px 0}.logo{height:64px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.tab{display:inline-block;padding:10px 14px;border:1px solid var(--border);background:#fff;border-radius:999px;text-decoration:none;color:var(--text)}
+.tab:hover{box-shadow:var(--shadow)} h1{font-size:22px;margin:18px 0}
+.controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.card{background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);padding:16px;margin:12px 0}
+.small{font-size:12px;color:var(--muted)} .btn{background:var(--primary);color:#fff;border:0;border-radius:12px;padding:10px 14px;cursor:pointer}
+.btn:hover{filter:brightness(.95)} input{padding:10px;border:1px solid var(--border);border-radius:12px}
+.chips{display:flex;gap:8px;flex-wrap:wrap}.chips input{display:none}
+.chips label{padding:8px 14px;border:1px solid var(--border);border-radius:9999px;cursor:pointer;background:#fff}
+.chips input:checked+label{background:var(--primary);color:#fff;border-color:var(--primary)}
+.row{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+</style></head><body>
+<div class="container">
+  <header>
+    <img src="/logopanol.png" alt="Panol" class="logo">
+    <nav class="tabs">
+      <a class="tab" href="/saisie">Saisie</a><a class="tab" href="/ouvertes">Ouvertes</a><a class="tab" href="/historique">Historique</a>
+    </nav>
+  </header>
+
+  <h1>Demandes ouvertes</h1>
+  <div class="controls">
+    <div>Qui clôture ?</div>
+    <div class="chips">
+      <input type="radio" id="actor-nadia" name="actor" value="Nadia"><label for="actor-nadia">Nadia</label>
+      <input type="radio" id="actor-nicolas" name="actor" value="Nicolas"><label for="actor-nicolas">Nicolas</label>
+      <input type="radio" id="actor-veronique" name="actor" value="Véronique"><label for="actor-veronique">Véronique</label>
+    </div>
+    <label>Filtrer N° commande <input id="filter" placeholder="CMD..."></label>
+    <button id="refresh" class="btn">Rafraîchir</button>
+  </div>
+
+  <div id="msg" class="small"></div>
+  <div id="list"></div>
+</div>
+
+<script>
+const API="/api"; const $=id=>document.getElementById(id);
+const getActor=()=>{const r=document.querySelector('input[name="actor"]:checked');return r?r.value:"";};
+
+async function buildDetails(rq){
+  let html = `<div><b>Motif:</b> ${rq.reason}</div><div><b>Commentaire:</b> ${rq.comment??""}</div>`;
+  const evRes = await fetch(`${API}/requests/${rq.id}/events`);
+  if(evRes.ok){
+    const evs = await evRes.json(); let idx = 2;
+    for(const ev of evs){
+      const data = ev.data || {};
+      if(ev.event_type==="REOPENED"){
+        html += `<div><b>Motif ${idx}:</b> ${data.reason||""}</div>
+                 <div><b>Commentaire ${idx}:</b> ${data.comment||""}</div>
+                 <div class="small">Réouvert le ${new Date(ev.at).toLocaleString()} par ${ev.by}</div>`;
+        idx++;
+      }
+    }
+  }
+  return html;
+}
+
+async function load(){
+  $("msg").textContent=""; const f=$("filter").value.trim();
+  const qs=f?`?status=OPEN&order_no=${encodeURIComponent(f)}`:"?status=OPEN";
+  const r=await fetch(API+"/requests"+qs); if(!r.ok){$("msg").textContent="Erreur de chargement";return;}
+  const rows=await r.json(); const list=$("list"); list.innerHTML="";
+  if(rows.length===0){list.innerHTML="<div class='small'>Aucune demande ouverte.</div>";return;}
+  for(const rq of rows){
+    const d=document.createElement("div"); d.className="card";
+    d.innerHTML=`<div class="row">
+        <div><b>#${rq.id}</b> — Cmd: <b>${rq.order_no}</b></div>
+        <div class="small">Ouvert par ${rq.opened_by} le ${new Date(rq.opened_at).toLocaleString()}</div>
+      </div>
+      <div id="details-${rq.id}">Chargement…</div>
+      <div class="row"><div></div><button class="btn" data-id="${rq.id}">Clôturer</button></div>`;
+    list.appendChild(d);
+    buildDetails(rq).then(ht=>{ const el=document.getElementById(`details-${rq.id}`); if(el) el.innerHTML=ht; });
+  }
+  list.querySelectorAll("button[data-id]").forEach(b=>b.onclick=async()=>{
+    const actor=getActor(); if(!actor){alert("Sélectionner un prénom");return;}
+    b.disabled=true;
+    try{
+      const id=b.dataset.id; const res=await fetch(`${API}/requests/${id}/close`,{
+        method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({closed_by:actor})
+      });
+      if(!res.ok) throw new Error(await res.text()); await load();
+    }catch(e){alert(e.message||"Erreur");}finally{b.disabled=false;}
+  });
+}
+$("refresh").onclick=load; window.onload=load;
+</script></body></html>
